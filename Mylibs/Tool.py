@@ -33,4 +33,4 @@ def get_dist_matrix(filepath, poi2idx):
                                                                    geo_dict[p2][1], geo_dict[p2][2])
             dist_mat[ poi2idx[p2] ][ poi2idx[p1] ] = dist_mat[ poi2idx[p1] ][ poi2idx[p2] ]
 
-    return dist_mat
+    return dist_mat, geo_dict
