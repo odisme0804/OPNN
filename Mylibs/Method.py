@@ -13,6 +13,7 @@ from keras.layers import Add, Concatenate, Flatten, MaxoutDense, TimeDistributed
 from keras.layers.convolutional import Conv1D
 from keras.layers.normalization import BatchNormalization
 from keras import optimizers
+from keras import regularizers
 from keras.callbacks import ModelCheckpoint
 from keras.utils.np_utils import to_categorical
 from keras import metrics
@@ -32,7 +33,7 @@ def get_NN_paras():
     paras.hidden_dim = 300
     paras.drop_rate = 0.2
     paras.train_poi = False
-    paras.train_user = False
+    paras.train_user = True
     paras.max_process = 10
 
     return paras
@@ -90,11 +91,13 @@ class OPNN:
         poi_ebd_layer = Embedding(self.poi_mat.shape[0], 300,
                                   weights=[self.poi_mat],
                                   input_length=self.paras.seq_len,
-                                  trainable=self.paras.train_poi)
+                                  trainable=self.paras.train_poi,
+                                  embeddings_regularizer=regularizers.l2(0.01))
         user_ebd_layer = Embedding(self.user_mat.shape[0], 300,
                                    weights=[self.user_mat],
                                    input_length=self.paras.seq_len,
-                                   trainable=self.paras.train_user)
+                                   trainable=self.paras.train_user,
+                                   embeddings_regularizer=regularizers.l2(0.01))
 
         poi_input = Input(shape=(self.paras.seq_len,), name='poi_input')
         poi = poi_ebd_layer(poi_input)
@@ -114,16 +117,17 @@ class OPNN:
                                      input_length=1,
                                      trainable=False)
 
-        #transition_input = Input(shape=(1,), name='transition_input')
-        #user_ebd_layer2 = Embedding(self.user_mat.shape[0], self.paras.hidden_dim/30,
-        #                           input_length=1,trainable=True)
-        
-        #poi_dist_layer_2 = Embedding(self.dist_mat.shape[0], self.dist_mat.shape[1],
-        #                             weights=[ np.ones(self.dist_mat.shape) ],
-        #                             input_length=1,
-        #                             trainable=False)
 
-        #user_t = user_ebd_layer2(transition_input)
+        single_input = Input(shape=(1,), name='single_input')
+        user_ebd_layer2 = Embedding(self.user_mat.shape[0], 1,
+                                    input_length=1,trainable=True,
+                                    embeddings_regularizer=regularizers.l1(0.001))
+
+        user_t = user_ebd_layer2(single_input)
+        user_t = Flatten()(user_t)
+        user_t = RepeatVector(self.dist_mat.shape[0])(user_t)
+
+
 
         dist_layer = poi_dist_layer_1(dist_input)
         #dist_layer_2 = poi_dist_layer_2(dist_input)
@@ -165,7 +169,8 @@ class OPNN:
 
         st_influence = Multiply()([dist_layer, time_ebd_w])
         st_influence = Add()([st_influence, time_ebd_b])
-        # new
+        st_influence = Add()([st_influence, user_t]) # new add
+
         #st_influence = Multiply()([st_influence, time_influence])
         st_influence = Flatten()(st_influence)
         st_influence = Activation("sigmoid")(st_influence)
@@ -189,7 +194,8 @@ class OPNN:
         #x = Dense(self.poi_mat.shape[0])(x)
         #x = BatchNormalization()(x)
         #output = Activation("softmax")(x)
-        model = Model(inputs=[poi_input, user_input, dist_input, time_input], outputs=output)
+        model = Model(inputs=[poi_input, user_input, dist_input, single_input, time_input], outputs=output)
+        #model = Model(inputs=[poi_input, user_input, dist_input, time_input], outputs=output)
         #model = Model(inputs=[poi_input, user_input], outputs=output)
         adam = optimizers.Adam()
         model.compile(loss='categorical_crossentropy', optimizer=adam,
@@ -309,7 +315,8 @@ class OPNN:
                 is_week = np.array([x.weekday()/5 for x in date[i * batch:(i + 1) * batch] ]) 
                 #d = to_categorical(temp, 24) 
                 #yield [X, U], y
-                yield [X, U, P, temp + 24 * is_week], y
+                #yield [X, U, P, temp + 24 * is_week], y
+                yield [X, U, P, T, temp + 24 * is_week], y
 
     def load_dist_matrix(self, fp):
         if os.path.isfile(fp + '_dist.npy'):
@@ -500,7 +507,8 @@ class OPNN:
             temp = [x.hour for x in self.d_tune ]
             temp = np.array(temp)
             is_week = np.array([x.weekday()/5 for x in self.d_tune ]) 
-            preds = self.model.predict_on_batch([self.x_tune, self.u_tune, self.x_tune[:,-1], temp + 24 * is_week ])
+            preds = self.model.predict_on_batch([self.x_tune, self.u_tune, self.x_tune[:,-1], self.u_tune[:,-1], temp + 24 * is_week ])
+            #preds = self.model.predict_on_batch([self.x_tune, self.u_tune, self.x_tune[:,-1], temp + 24 * is_week ])
             #preds = self.model.predict_on_batch([self.x_tune, self.u_tune])
 
             manager = mpc.Manager()
@@ -546,7 +554,8 @@ class OPNN:
             temp = [x.hour for x in self.d_val ]
             temp = np.array(temp)
             is_week = np.array([x.weekday()/5 for x in self.d_val ]) 
-            preds = self.model.predict_on_batch([self.x_val, self.u_val, self.x_val[:,-1], temp + 24 * is_week ])
+            preds = self.model.predict_on_batch([self.x_val, self.u_val, self.x_val[:,-1], self.u_val[:,-1],  temp + 24 * is_week ])
+            #preds = self.model.predict_on_batch([self.x_val, self.u_val, self.x_val[:,-1], temp + 24 * is_week ])
             #preds = self.model.predict_on_batch([self.x_val, self.u_val])
 
             manager = mpc.Manager()
