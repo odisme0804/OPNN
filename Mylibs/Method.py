@@ -162,7 +162,7 @@ class OPNN:
             con = self.x_train[i][-1]
             fut = self.y_train[i]
 
-            user_check[u][con] += 1
+            user_check[u][con] = 1
 
         user_check = pow(user_check, alpha)
         where_are_NaNs = np.isnan(user_check)
@@ -221,14 +221,22 @@ class OPNN:
         user_input = Input(shape=(self.paras.seq_len,), name='user_input')
         user = user_ebd_layer(user_input)
 
+        time_input = Input(shape=(1,), name='time_input')
+        weekday_ebd = Embedding(48, self.paras.hidden_dim,
+                                 input_length=1,
+                                 trainable=True)
+        wkd = weekday_ebd(time_input)
+        wkd = Flatten()(wkd)
+        wkd = RepeatVector(self.paras.seq_len)(wkd)
+
         # how to merge 2 vec
-        merged = Concatenate()([poi, user])
+        merged = Concatenate()([poi, user, wkd])
         merged = BatchNormalization()(merged)
 #        merged = BatchNormalization(gamma_constraint=constraints.max_norm(1), gamma_regularizer=regularizers.l2(0.01),
 #                                    beta_constraint=constraints.max_norm(1), beta_regularizer=regularizers.l2(0.01))(merged)
 
 
-        x = LSTM(self.paras.hidden_dim, return_sequences=False, dropout=self.paras.drop_rate, recurrent_dropout=0.8)(merged)
+        x = LSTM(self.paras.hidden_dim, return_sequences=False, dropout=self.paras.drop_rate, recurrent_dropout=0.5)(merged)
 
         # add new input
         """
@@ -273,7 +281,7 @@ class OPNN:
         #dist_layer_2 = Reshape((self.dist_mat.shape[0],1))(dist_layer_2)
         #dist_layer = Concatenate()([dist_layer_1, dist_layer_2])
 
-        time_input = Input(shape=(1,), name='time_input')
+        #time_input = Input(shape=(1,), name='time_input')
 
         #time_trans = Embedding(24, self.paras.hidden_dim/30,
         #                       weights=[ np.ones([24, 10]) ],
